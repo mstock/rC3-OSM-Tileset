@@ -1,0 +1,513 @@
+#!/usr/bin/env perl
+
+# ABSTRACT: Script to convert openstreetmap-carto symbols to tilesets
+
+use 5.010001;
+use Moose;
+with 'MooseX::Getopt';
+
+use MooseX::Types::Path::Class;
+use Image::Magick;
+use List::Util qw(pairs);
+use POSIX qw(ceil);
+
+
+has 'symbols_directory' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Path::Class::Dir',
+	cmd_flag      => 'symbols-directory',
+	coerce        => 1,
+	required      => 1,
+	documentation => 'Path to "symbols" directory of openstreetmap-carto',
+);
+
+has 'output_base_directory' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Path::Class::Dir',
+	cmd_flag      => 'output-base-directory',
+	coerce        => 1,
+	required      => 1,
+	documentation => 'Path to output base directory for tilesets',
+);
+
+my $amenity_brown = '#734a08';
+my $culture = $amenity_brown;
+my $public_service = $amenity_brown;
+my $gastronomy_icon = '#C77400';
+my $man_made_icon = '#666666';
+my $transportation_icon = '#0092da';
+my $health_color = '#BF0000';
+my $airtransport = '#8461C4';
+my $marina_text = '#576ddf';
+my $religious_icon = '#000000';
+my $accommodation_icon = $transportation_icon;
+my $barrier_icon = '#3f3f3f';
+my $memorials = $amenity_brown;
+my $leisure_green = '#0d8517';
+my $landform_color = '#d08f55';
+my $office = '#4863A0';
+my $placenames = '#222222';
+my $shop_icon = '#ac39ac';
+my $advertising_grey = $man_made_icon;
+my $water_text = '#4d80b3';
+
+my @symbol_groups = (
+	{
+		name    => 'amenity',
+		outdir  => ['symbols'],
+		width   => 5,
+		symbols => [
+			arts_centre                  => $culture,
+			atm                          => $amenity_brown,
+			bank                         => $public_service,
+			bar                          => $gastronomy_icon,
+			bbq                          => $amenity_brown,
+			bench                        => $man_made_icon,
+			bicycle_parking              => $transportation_icon,
+			bicycle_repair_station       => $amenity_brown,
+			biergarten                   => $gastronomy_icon,
+			boat_rental                  => $transportation_icon,
+			bureau_de_change             => $amenity_brown,
+			bus_station                  => undef,
+			cafe                         => $gastronomy_icon,
+			car_wash                     => $amenity_brown,
+			casino                       => $amenity_brown,
+			charging_station             => $transportation_icon,
+			cinema                       => $culture,
+			community_centre             => $culture,
+			courthouse                   => $public_service,
+			dentist                      => $health_color,
+			doctors                      => $health_color,
+			drinking_water               => $amenity_brown,
+			emergency_phone              => $amenity_brown,
+			excrement_bags               => $amenity_brown,
+			fast_food                    => $gastronomy_icon,
+			ferry                        => $airtransport,
+			firestation                  => $public_service,
+			fountain                     => $marina_text,
+			fuel                         => $transportation_icon,
+			hospital                     => $health_color,
+			hunting_stand                => $man_made_icon,
+			ice_cream                    => $gastronomy_icon,
+			internet_cafe                => $amenity_brown,
+			library                      => $culture,
+			motorcycle_parking           => $transportation_icon,
+			nightclub                    => $amenity_brown,
+			parking_entrance_multistorey => $transportation_icon,
+			parking_entrance_underground => $transportation_icon,
+			parking                      => $transportation_icon,
+			parking_tickets              => $amenity_brown,
+			pharmacy                     => $health_color,
+			place_of_worship             => $religious_icon,
+			police                       => $public_service,
+			post_box                     => $amenity_brown,
+			post_office                  => $public_service,
+			prison                       => $public_service,
+			public_bath                  => $amenity_brown,
+			public_bookcase              => $amenity_brown,
+			public_transport_tickets     => $amenity_brown,
+			pub                          => $gastronomy_icon,
+			recycling                    => $amenity_brown,
+			rental_bicycle               => $transportation_icon,
+			rental_car                   => $transportation_icon,
+			restaurant                   => $gastronomy_icon,
+			shelter                      => $accommodation_icon,
+			shower                       => $amenity_brown,
+			social_facility              => $public_service,
+			taxi                         => $transportation_icon,
+			telephone                    => $amenity_brown,
+			theatre                      => $culture,
+			toilets                      => $amenity_brown,
+			town_hall                    => $public_service,
+			vehicle_inspection           => $public_service,
+			veterinary                   => $health_color,
+			waste_basket                 => $man_made_icon,
+			waste_disposal               => $man_made_icon,
+		],
+	},
+	{
+		name    => 'barrier',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			cattle_grid             => $barrier_icon,
+			cycle_barrier           => $barrier_icon,
+			'full-height_turnstile' => $barrier_icon,
+			gate                    => undef,
+			kissing_gate            => $barrier_icon,
+			lift_gate               => $barrier_icon,
+			motorcycle_barrier      => $barrier_icon,
+			stile                   => $barrier_icon,
+			toll_booth              => $transportation_icon,
+		],
+	},
+	{
+		name    => 'highway',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			'bus_stop.12'      => $transportation_icon,
+			'elevator.12'      => $transportation_icon,
+			ford               => $transportation_icon,
+			mini_roundabout    => undef,
+			'traffic_light.13' => '#545454',
+		],
+	},
+	{
+		name    => 'historic',
+		outdir  => ['symbols'],
+		width   => 2,
+		symbols => [
+			archaeological_site => $culture,
+			bust                => $memorials,
+			castle              => $memorials,
+			city_gate           => $man_made_icon,
+			fortress            => $memorials,
+			fort                => $memorials,
+			manor               => $memorials,
+			memorial            => $memorials,
+			monument            => $memorials,
+			obelisk             => $memorials,
+			palace              => $memorials,
+			plaque              => $memorials,
+			shrine              => $man_made_icon,
+			statue              => $memorials,
+			stone               => $memorials,
+		],
+	},
+	{
+		name    => 'leisure',
+		outdir  => ['symbols'],
+		width   => 2,
+		symbols => [
+			amusement_arcade => $leisure_green,
+			beach_resort     => $leisure_green,
+			bird_hide        => $leisure_green,
+			bowling_alley    => $leisure_green,
+			firepit          => $amenity_brown,
+			fishing          => $leisure_green,
+			fitness          => $leisure_green,
+			golf             => $leisure_green,
+			miniature_golf   => $leisure_green,
+			outdoor_seating  => $leisure_green,
+			playground       => $leisure_green,
+			sauna            => $leisure_green,
+			slipway          => $transportation_icon,
+			water_park       => $leisure_green,
+		],
+	},
+	{
+		name    => 'man_made',
+		outdir  => ['symbols'],
+		width   => 3,
+		symbols => [
+			bell_tower                     => $man_made_icon,
+			chimney                        => $man_made_icon,
+			communications_tower           => $man_made_icon,
+			crane                          => $man_made_icon,
+			cross                          => $religious_icon,
+			lighthouse                     => $man_made_icon,
+			mast_communications            => $man_made_icon,
+			mast_lighting                  => $man_made_icon,
+			mast                           => $man_made_icon,
+			power_tower_small              => '#928f8f',
+			power_tower                    => '#928f8f',
+			storage_tank                   => $man_made_icon,
+			telescope_dish                 => $man_made_icon,
+			telescope_dome                 => $man_made_icon,
+			tower_cantilever_communication => $man_made_icon,
+			tower_cooling                  => $man_made_icon,
+			tower_defensive                => $man_made_icon,
+			tower_dish                     => $man_made_icon,
+			tower_dome                     => $man_made_icon,
+			tower_generic                  => $man_made_icon,
+			tower_lattice_communication    => $man_made_icon,
+			tower_lattice_lighting         => $man_made_icon,
+			tower_lattice                  => $man_made_icon,
+			tower_lighting                 => $man_made_icon,
+			tower_observation              => $man_made_icon,
+			water_tower                    => $man_made_icon,
+			windmill                       => $man_made_icon,
+		],
+	},
+	{
+		name    => 'natural',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			cave   => undef,
+			peak   => $landform_color,
+			saddle => $landform_color,
+		],
+	},
+	{
+		name    => 'office',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			consulate => $office,
+			embassy   => $office,
+		],
+	},
+	{
+		name    => 'place',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			'place-4'         => $placenames,
+			'place-4-z7'      => $placenames,
+			'place-6'         => $placenames,
+			'place-6-z7'      => $placenames,
+			'place-capital-6' => $placenames,
+			'place-capital-8' => $placenames,
+		],
+	},
+	{
+		name    => 'religion',
+		outdir  => ['symbols'],
+		width   => 1,
+		symbols => [
+			buddhist  => $religious_icon,
+			christian => $religious_icon,
+			hinduist  => $religious_icon,
+			jewish    => $religious_icon,
+			muslim    => $religious_icon,
+			shintoist => $religious_icon,
+			sikhist   => $religious_icon,
+			taoist    => $religious_icon,
+		],
+	},
+	{
+		name    => 'shop',
+		outdir  => ['symbols'],
+		width   => 5,
+		symbols => [
+			alcohol             => $shop_icon,
+			art                 => $amenity_brown,
+			bag                 => $shop_icon,
+			bakery              => $shop_icon,
+			beauty              => $shop_icon,
+			bed                 => $shop_icon,
+			beverages           => $shop_icon,
+			bicycle             => $shop_icon,
+			bookmaker           => $shop_icon,
+			butcher             => $shop_icon,
+			car_parts           => $shop_icon,
+			carpet              => $shop_icon,
+			car_repair          => $amenity_brown,
+			car                 => $shop_icon,
+			charity             => $shop_icon,
+			chemist             => $shop_icon,
+			clothes             => $shop_icon,
+			coffee              => $shop_icon,
+			computer            => $shop_icon,
+			confectionery       => $shop_icon,
+			convenience         => $shop_icon,
+			copyshop            => $shop_icon,
+			dairy               => $shop_icon,
+			deli                => $shop_icon,
+			department_store    => $shop_icon,
+			diy                 => $shop_icon,
+			electronics         => $shop_icon,
+			fabric              => $shop_icon,
+			florist             => $shop_icon,
+			furniture           => $shop_icon,
+			garden_centre       => $shop_icon,
+			gift                => $shop_icon,
+			greengrocer         => $shop_icon,
+			hairdresser         => $shop_icon,
+			hifi                => $shop_icon,
+			houseware           => $shop_icon,
+			interior_decoration => $shop_icon,
+			jewelry             => $shop_icon,
+			laundry             => $shop_icon,
+			marketplace         => $shop_icon,
+			massage             => $leisure_green,
+			medical_supply      => $shop_icon,
+			mobile_phone        => $shop_icon,
+			musical_instrument  => $shop_icon,
+			music               => $shop_icon,
+			newsagent           => $shop_icon,
+			optician            => $shop_icon,
+			outdoor             => $shop_icon,
+			paint               => $shop_icon,
+			perfumery           => $shop_icon,
+			pet                 => $shop_icon,
+			photo               => $shop_icon,
+			seafood             => $shop_icon,
+			second_hand         => $shop_icon,
+			shoes               => $shop_icon,
+			sports              => $shop_icon,
+			stationery          => $shop_icon,
+			supermarket         => $shop_icon,
+			tea                 => $shop_icon,
+			ticket              => $shop_icon,
+			tobacco             => $shop_icon,
+			toys                => $shop_icon,
+			trade               => $shop_icon,
+			travel_agency       => $shop_icon,
+			tyres               => $shop_icon,
+			variety_store       => $shop_icon,
+			video_games         => $shop_icon,
+			video               => $shop_icon,
+		],
+	},
+	{
+		name    => 'tourism',
+		outdir  => ['symbols'],
+		width   => 2,
+		symbols => [
+			alpinehut      => $accommodation_icon,
+			apartment      => $accommodation_icon,
+			artwork        => $memorials,
+			audioguide     => $man_made_icon,
+			board          => $man_made_icon,
+			camping        => $accommodation_icon,
+			caravan_park   => $accommodation_icon,
+			chalet         => $accommodation_icon,
+			guest_house    => $accommodation_icon,
+			guidepost      => $man_made_icon,
+			hostel         => $accommodation_icon,
+			hotel          => $accommodation_icon,
+			information    => $man_made_icon,
+			map            => $man_made_icon,
+			motel          => $accommodation_icon,
+			museum         => $culture,
+			office         => $amenity_brown,
+			picnic         => $leisure_green,
+			picnic         => $man_made_icon,
+			terminal       => $man_made_icon,
+			viewpoint      => $amenity_brown,
+			wilderness_hut => $accommodation_icon,
+		],
+	},
+	{
+		name      => 'landcover_256',
+		outdir    => [],
+		width     => 4,
+		tile_size => 256,
+		symbols => [
+			beach_coarse          => { src => 'beach_coarse.png' },
+			leaftype_broadleaved  => { src => 'leaftype_broadleaved.svg' },
+			leaftype_leafless     => { src => 'leaftype_leafless.svg' },
+			leaftype_mixed        => { src => 'leaftype_mixed.svg' },
+			leaftype_needleleaved => { src => 'leaftype_needleleaved.svg' },
+			leaftype_unknown      => { src => 'leaftype_unknown.svg' },
+			quarry                => { src => 'quarry.svg' },
+			reef                  => { src => 'reef.png' },
+			rock_overlay          => { src => 'rock_overlay.png' },
+			'salt-dots-2'         => { src => 'salt-dots-2.png' },
+			'salt_pont'           => { src => 'salt_pond.png' },
+			'scree_overlay'       => { src => 'scree_overlay.png' },
+			wetland               => { src => 'wetland.png' },
+		],
+	},
+	{
+		name      => 'landcover_512',
+		outdir    => [],
+		width     => 3,
+		tile_size => 512,
+		symbols => [
+			scrub            => { src => 'scrub.png' },
+			wetland_bog      => { src => 'wetland_bog.png' },
+			wetland_mangrove => { src => 'wetland_mangrove.png' },
+			wetland_marsh    => { src => 'wetland_marsh.png' },
+			wetland_reed     => { src => 'wetland_reed.png' },
+			wetland_swamp    => { src => 'wetland_swamp.png' },
+		],
+	},
+	{
+		name      => 'miscellaneous',
+		outdir    => ['symbols'],
+		width     => 3,
+		symbols => [
+			advertising_column   => { src => 'advertising_column.svg', color => $advertising_grey },
+			'aerodrome.12'       => { src => 'aerodrome.12.svg', color => $airtransport },
+			bunker               => { src => 'bunker.svg', color => $man_made_icon },
+			dog_park             => { src => 'dog_park.png' },
+			'entrance.10'        => { src => 'entrance.10.svg', color => $transportation_icon },
+			generator_wind       => { src => 'generator_wind.svg', color => $man_made_icon },
+			grave_yard_christian => { src => 'grave_yard_christian.svg' },
+			grave_yard_generic   => { src => 'grave_yard_generic.svg' },
+			grave_yard_jewish    => { src => 'grave_yard_jewish.svg' },
+			grave_yard_muslim    => { src => 'grave_yard_muslim.svg' },
+			'helipad.16'         => { src => 'helipad.16.svg', color => $airtransport },
+			intermittent_river   => { src => 'intermittent_river.png' },
+			intermittent_water   => { src => 'intermittent_water.png' },
+			level_crossing2      => { src => 'level_crossing2.svg' },
+			level_crossing       => { src => 'level_crossing.svg' },
+			motorcycle           => { src => 'motorcycle.svg', color => $shop_icon },
+			'oneway-reverse'     => { src => 'oneway-reverse.svg' },
+			oneway               => { src => 'oneway.svg' },
+			spring               => { src => 'spring.svg' },
+			waterfall            => { src => 'waterfall.svg', color => $water_text },
+		],
+	},
+);
+
+sub run {
+	my ($self) = @_;
+
+	for my $symbol_group (@symbol_groups) {
+		my $name = $symbol_group->{name};
+		say 'Processing ' . $name . '...';
+		my @symbols = pairs @{$symbol_group->{symbols}};
+		my $width = $symbol_group->{width};
+		my $tile_size = $symbol_group->{tile_size} // 32;
+
+		my $tileset = Image::Magick->new(
+			size       => ($width * $tile_size) . 'x' . (ceil(scalar @symbols / $width) * $tile_size),
+			magick     => 'png',
+			background => 'none',
+		);
+		$tileset->ReadImage('canvas:transparent');
+
+		my $column = 0;
+		my $row = 0;
+		for my $symbol (@symbols) {
+			my ($symbol_name, $symbol_value) = @{$symbol};
+			my $color = ref $symbol_value
+				? $symbol_value->{color}
+				: $symbol_value;
+			my $magick = Image::Magick->new();
+			$magick->Set(density => 1024);
+
+			my @default_source = ($name, $symbol_name . '.svg');
+			my $source = $self->symbols_directory()->file(
+				ref $symbol_value
+					? $symbol_value->{src} // @default_source
+					: @default_source
+			);
+			my $error = $magick->Read(file => \($source->openr()));
+			die $error if $error;
+
+			$magick->Set(Background => 'none');
+			if ($color) {
+				$magick->Opaque(color => '#000000', fill => $color, fuzz => '80%');
+			}
+			$magick->Extent(geometry => $tile_size . 'x' . $tile_size, gravity => 'Center');
+
+			$error = $tileset->Composite(
+				image => $magick,
+				x     => $column * $tile_size,
+				y     => $row * $tile_size,
+			);
+			die $error if $error;
+
+			if (++$column == $width) {
+				$column = 0;
+				$row++;
+			}
+		}
+		my $output_directory = $self->output_base_directory()->subdir(@{$symbol_group->{outdir}});
+		unless (-d $output_directory) {
+			$output_directory->mkpath();
+		}
+		my $error = $tileset->Write(file => \($output_directory->file($name . '.png')->openw()));
+		die $error if $error;
+	}
+}
+
+__PACKAGE__->new_with_options()->run() unless caller();
