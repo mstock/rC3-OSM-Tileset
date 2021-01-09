@@ -1,0 +1,187 @@
+#!/usr/bin/env perl
+
+# ABSTRACT: Script to generate label images
+
+use 5.010001;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use Moose;
+with 'MooseX::Getopt';
+
+use Carp;
+use MooseX::Types::Path::Class;
+use Image::Magick;
+use POSIX qw(ceil);
+use Image::LibRSVG;
+use XML::LibXML;
+use Readonly;
+use List::Util qw(first);
+use rC3::OSM::Tileset::Color qw(COLOR COLOR_NAMES);
+
+Readonly my $svg_ns => 'http://www.w3.org/2000/svg';
+
+
+has 'target_file' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Path::Class::File',
+	cmd_flag      => 'target-file',
+	coerce        => 1,
+	required      => 1,
+	documentation => 'File where generated label should be stored.',
+);
+
+has 'color' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Str',
+	required      => 1,
+	documentation => 'Color to use for the label - either an #rrggbb color '
+		. 'code or one of ' . join(', ', COLOR_NAMES) . ' (prefix is sufficient).',
+);
+
+has 'text' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Str',
+	required      => 1,
+	documentation => 'Text for the label. May contain actual newlines or '
+		. '\n to indicate line breaks.',
+);
+
+has 'font_size' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Int',
+	cmd_flag      => 'font-size',
+	default       => 10,
+	documentation => 'Font size for the label.',
+);
+
+has 'font_family' => (
+	traits        => ['Getopt'],
+	is            => 'ro',
+	isa           => 'Str',
+	cmd_flag      => 'font-family',
+	default       => 'Noto Sans',
+	documentation => 'Font family for the label.',
+);
+
+
+sub run {
+	my ($self) = @_;
+
+	my $rsvg = Image::LibRSVG->new();
+	$rsvg->loadFromString($self->build_svg());
+	my $label = Image::Magick->new(
+		magick     => 'png',
+		background => 'none',
+	);
+	my $error = $label->BlobToImage($rsvg->getImageBitmap('png'));
+	die $error if $error;
+
+	my $y_offset     = 27;
+	my $tile_size    = 32;
+	my $label_width  = $label->Get('width');
+	my $label_height = $label->Get('height');
+	my $tile_count_x = ceil($label_width  / $tile_size);
+	if ($tile_count_x % 2 == 0) {
+		$tile_count_x++;
+	}
+	my $tile_count_y = ceil(($label_height + $y_offset) / $tile_size);
+
+	my $padded_label = Image::Magick->new(
+		magick     => 'png',
+		background => 'none',
+		size       => $tile_count_x * $tile_size . 'x' . $tile_count_y * $tile_size,
+	);
+	$padded_label->ReadImage('canvas:transparent');
+	$error = $padded_label->Composite(
+		image => $label,
+		x     => ($tile_count_x / 2 * $tile_size) - ceil($label_width / 2),
+		y     => $y_offset,
+	);
+	die $error if $error;
+
+	$error = $padded_label->Write(file => \($self->target_file()->openw()));
+	die $error if $error;
+}
+
+
+sub build_svg {
+	my ($self) = @_;
+
+	my $svg = XML::LibXML::Document->new('1.0', 'UTF-8');
+	my $root = $self->create_svg_element($svg, 'svg');
+	$svg->setDocumentElement($root);
+
+	my $line_padding = int($self->font_size() / 2);
+	my %common_attributes = (
+		'y'                 => $self->font_size() - $line_padding,
+		'font-family'       => $self->font_family(),
+		'font-size'         => $self->font_size(),
+		'fill'              => $self->convert_color($self->color()),
+		'text-anchor'       => 'middle',
+		'dominant-baseline' => 'central',
+		'stroke'            => '#ffffff',
+		'stroke-width'      => 4,
+		'stroke-linejoin'   => 'round',
+	);
+	my $text_element = $self->create_svg_element($svg, text => (
+		%common_attributes,
+		'stroke-opacity' => 0,
+	));
+	my $outline_elemnt = $self->create_svg_element($svg, text => (
+		%common_attributes,
+		'stroke-opacity' => 1,
+	));
+
+	my @lines = split(m{(?:\n|\\n)}, $self->text);
+	for my $text_element ($text_element, $outline_elemnt) {
+		my $appended_lines = 0;
+		for my $line (@lines) {
+			my $line_element = $self->create_svg_element($svg, tspan => (
+				'x'  => '50%',
+				'dy' => $self->font_size() * ($appended_lines++ > 0 ? 1 : 0) + $line_padding,
+			));
+			$line_element->appendTextNode($line);
+			$text_element->appendChild($line_element);
+		}
+	}
+
+	$root->appendChild($outline_elemnt);
+	$root->appendChild($text_element);
+
+	return $svg->toString();
+}
+
+
+sub convert_color {
+	my ($self, $color) = @_;
+
+	if ($color =~ m{#[a-f0-9]{6}}i) {
+		return $color;
+	}
+	else {
+		my $color_name = first { $_ =~ m{^$color} } COLOR_NAMES;
+		unless (defined $color_name) {
+			croak('Unknown color name ' . $color);
+		}
+		return {COLOR}->{$color_name};
+	}
+}
+
+
+sub create_svg_element {
+	my ($self, $svg, $name, %attribute) = @_;
+
+	my $element = $svg->createElementNS($svg_ns, $name);
+	for my $attribute (keys %attribute) {
+		$element->setAttribute($attribute => $attribute{$attribute});
+	}
+	return $element;
+}
+
+
+__PACKAGE__->new_with_options()->run() unless caller();
