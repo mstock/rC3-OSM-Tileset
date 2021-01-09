@@ -3,6 +3,9 @@
 # ABSTRACT: Script to convert openstreetmap-carto symbols to tilesets
 
 use 5.010001;
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
 use Moose;
 with 'MooseX::Getopt';
 
@@ -10,6 +13,7 @@ use MooseX::Types::Path::Class;
 use Image::Magick;
 use List::Util qw(pairs);
 use POSIX qw(ceil);
+use rC3::OSM::Tileset::Color qw(COLOR);
 
 
 has 'symbols_directory' => (
@@ -32,26 +36,27 @@ has 'output_base_directory' => (
 	documentation => 'Path to output base directory for tilesets',
 );
 
-my $amenity_brown = '#734a08';
-my $culture = $amenity_brown;
-my $public_service = $amenity_brown;
-my $gastronomy_icon = '#C77400';
-my $man_made_icon = '#666666';
-my $transportation_icon = '#0092da';
-my $health_color = '#BF0000';
-my $airtransport = '#8461C4';
-my $marina_text = '#576ddf';
-my $religious_icon = '#000000';
-my $accommodation_icon = $transportation_icon;
-my $barrier_icon = '#3f3f3f';
-my $memorials = $amenity_brown;
-my $leisure_green = '#0d8517';
-my $landform_color = '#d08f55';
-my $office = '#4863A0';
-my $placenames = '#222222';
-my $shop_icon = '#ac39ac';
-my $advertising_grey = $man_made_icon;
-my $water_text = '#4d80b3';
+my %c = COLOR;
+my $amenity_brown = $c{amenity_brown};
+my $culture = $c{culture};
+my $public_service = $c{public_service};
+my $gastronomy_icon = $c{gastronomy_icon};
+my $man_made_icon = $c{man_made_icon};
+my $transportation_icon = $c{transportation_icon};
+my $health_color = $c{health_color};
+my $airtransport = $c{airtransport};
+my $marina_text = $c{marina_text};
+my $religious_icon = $c{religious_icon};
+my $accommodation_icon = $c{accommodation_icon};
+my $barrier_icon = $c{barrier_icon};
+my $memorials = $c{memorials};
+my $leisure_green = $c{leisure_green};
+my $landform_color = $c{landform_color};
+my $office = $c{office};
+my $placenames = $c{placenames};
+my $shop_icon = $c{shop_icon};
+my $advertising_grey = $c{advertising_grey};
+my $water_text = $c{water_text};
 
 my @symbol_groups = (
 	{
