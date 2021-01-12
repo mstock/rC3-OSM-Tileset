@@ -126,7 +126,8 @@ sub build_svg {
 		'dominant-baseline' => 'central',
 		'stroke'            => '#ffffff',
 		'stroke-width'      => 4,
-		'stroke-linejoin'   => 'round',
+		'stroke-linejoin'   => 'bevel',
+		'stroke-linecap'    => 'square',
 	);
 	my $text_element = $self->create_svg_element($svg, text => (
 		%common_attributes,
